@@ -1,0 +1,47 @@
+LazyLoading Plugin
+CakePHP 1.2 Plugin - PHP 5 only
+
+LazyLoaderBehavior - What you need, When you need, The way you want.
+
+Enables easy access to related data through a Lazy Load¹ like interface,
+mapping methods named as "get<AssociatedModelName>" or "get_<associated_model_name>",
+to fetch related data and return. Can receive a string as first parameter to set the find type² to be 
+used in the operation. If the associated model to be used in the operation is related as
+"belongsTo" or "hasOne", a boolean TRUE can be passed as first or second param to force method to return
+the associated model instance setted with the related record data.
+¹ - http://en.wikipedia.org/wiki/Lazy_loading
+² - http://cakebaker.42dh.com/2008/09/23/an-alternative-way-to-define-custom-find-types/
+
+Usage:
+Notice that the method requires the Model to be instantiated with an exitant record id, and the
+related model to be binded during the process.
+
+Project belongsTo Company
+Project hasOne Owner
+Project hasMany Task
+Project hasAndBelongsToMany User
+Projects hasMany FeaturesProblemsAndBugs
+
+$Project->getCompany(); // returns data of the related Company
+$Project->getOwner(); // returns data of the related Owner
+$Project->getTasks(); // returns related tasks list
+$Project->getUsers(); // returns related users list
+$Project->getTasks('all'); // returns related tasks data
+$Project->getTasks('closed'); // returns related tasks fetched by a Task::find('closed') operation
+$Project->getCompany(true); // returns Company model instance setted with related record data
+$Project->getTask(); // error as Project has many Task not just one
+$Project->get_tasks(); // works too
+$Project->get_features_problems_and_bugs(); // works too
+
+Although not recommended can also be through the behavior method:
+- notice that it would break extensibility and flexibility of overriding to customization on Model side.
+$Project->lazyLoad('Company');
+$Project->lazyLoad('Tasks');
+
+--------------------------------------------------------
+
+RafaelBandeira <rafaelbandeira3 (at) gmail (dot) com>
+http://rafaelbandeira3.wordpress.com/
+
+Licensed under The MIT License
+Redistributions of files must retain the above copyright notice.
