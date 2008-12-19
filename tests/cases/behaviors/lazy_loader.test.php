@@ -10,7 +10,7 @@
  *
  */
 
-App::import('Behavior', 'LazyLoader');
+App::import('Behavior', 'LazyLoading.LazyLoader');
 App::import('Model', 'App');
 include CAKE_TESTS . 'cases' . DS . 'libs' . DS . 'model' . DS . 'models.php';
 
@@ -31,12 +31,12 @@ class LazyLoaderBehaviorTest extends CakeTestCase {
 		$this->Message = ClassRegistry::init('Message');
 		$this->Thread = ClassRegistry::init('Thread');
 
-		$this->Portfolio->Behaviors->attach('LazyLoader');
-		$this->Item->Behaviors->attach('LazyLoader');
-		$this->Syfile->Behaviors->attach('LazyLoader');
-		$this->Image->Behaviors->attach('LazyLoader');
-		$this->Message->Behaviors->attach('LazyLoader');
-		$this->Thread->Behaviors->attach('LazyLoader');
+		$this->Portfolio->Behaviors->attach('LazyLoading.LazyLoader');
+		$this->Item->Behaviors->attach('LazyLoading.LazyLoader');
+		$this->Syfile->Behaviors->attach('LazyLoading.LazyLoader');
+		$this->Image->Behaviors->attach('LazyLoading.LazyLoader');
+		$this->Message->Behaviors->attach('LazyLoading.LazyLoader');
+		$this->Thread->Behaviors->attach('LazyLoading.LazyLoader');
 
 		$this->Image->bind('Syfile', array('hasOne'));
 	}
