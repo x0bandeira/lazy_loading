@@ -42,60 +42,101 @@
  * Licensed under The MIT License
  * Redistributions of files must retain the above copyright notice.
  *
- * @version 1.1;
+ * @version 2.0;
  */
 
 class LazyLoaderBehavior extends ModelBehavior {
 	public $mapMethods = array('/^get((_[a-z0-9_]+)|([a-z0-9]+))/' => 'lazyLoad');
+	
+	function _getAssociationParams(&$Model, $association) {
+		$association = Inflector::underscore($association);
+		$association = preg_replace('/^get_?/', '', $association);
+		$association = str_replace('_', '', $association);
 
-	public function &lazyLoad(&$Model, $association, $type = null, $options = array()) {
-		if (!$Model->exists()) {
-			throw new Exception('Model must be associated with an existing record');
-			return false;
-		}
-		$association = $this->_getAssociation($Model, $association);
-		if ($association === false) {
-			throw new InvalidArgumentException('Model must be associated with the model intended to be loaded');
-			return false;
-		}
-
-		$multiple = ($association['type'] === 'hasAndBelongsToMany' || $association['type'] === 'hasMany');
-		if ($multiple) {
-			if (is_array($type)) {
-				$options = $type;
-				unset($type);
+		$contexts[] = array(
+			'model' =>& $Model,
+			'path' => array($Model->alias),
+			'allowedAssociations' => array('belongsTo', 'hasOne', 'hasMany', 'hasAndBelongsToMany'),
+			'params' => array()
+		);
+		
+		while (!empty($contexts)) {
+			$context = array_shift($contexts);
+			foreach ($context['allowedAssociations'] as $associationType) {
+				$multiple = ($associationType === 'hasMany' || $associationType === 'hasAndBelongsToMany');
+				$associations = $context['model']->{$associationType};
+				foreach ($associations as $alias => $settings) {
+					$valid = (
+						(strtolower($alias) === $association && !$multiple) ||
+						(Inflector::pluralize(strtolower($alias)) === $association && $multiple)
+					);
+					if (!$valid && $associationType === 'belongsTo') {
+						$contexts[] = array(
+							'model' =>& $context['model']->{$alias},
+							'path' => array_merge($context['path'], array($alias)),
+							'allowedAssociations' => array('belongsTo'),
+							'params' => array()
+						);
+					} elseif ($valid) {
+						$_Model =& $context['model']->{$alias};
+						return $params = array(
+							'type' => $associationType,
+							'settings' => $settings,
+							'model' =>& $_Model,
+							'alias' => $_Model->alias,		# debug purposes
+							'path' =>  $context['path'],
+							'deep' => ($context['model'] === $Model)
+						);
+					}
+				}
 			}
-			if (empty($type)) {
-				$type = 'list';
+		}
+		return false;
+	}
+
+	function lazyLoad(&$Model, $associated, $method = null, $options = array()) {
+		if (!$Model->exists()) {
+			throw new Exception('Model must to be instantiated');
+			return false;
+		} else {
+			$association = $this->_getAssociationParams($Model, $associated);
+			if ($association === false) {
+				throw new Exception('Model  is not associated with');
+				return false;
+			}
+		}
+		
+		$type = $association['type'];
+		$_Model =& $association['model'];
+		$multiple = ($type === 'hasMany' || $type === 'hasAndBelongsToMany');
+		$instance = (!$multiple && !empty($method));
+
+		if ($multiple) {
+			if (is_array($method)) {
+				$options = $method;
+				unset($method);
+			}
+			if (empty($method)) {
+				$method = 'list';
 			}
 		} else {
-			$instance = (!$multiple && !empty($type));
-			$type = 'first';
+			$method = 'first';
 		}
-
-		$queryKeys = array('conditions' => true, 'group' => true, 'order' => true);
-		if ($type !== 'list') {
-			$queryKeys['fields'] = true;
-		}
-		$query = array_merge(
-			array_intersect_key($association['association'], $queryKeys),
-			array('recursive' => -1),
+		
+		$queryKeys = array('conditions' => true, 'order' => true, 'group' => true, 'fields' => ($method !== 'list'));
+		$query = array_merge_recursive(
+			array_intersect_key($association['settings'], array_filter($queryKeys)),
+			array('recursive' => -1, 'joins' => array()),
 			$options
 		);
-		if (!isset($query['conditions'])) {
-			$query['conditions'] = array();
-		} elseif (!is_array($query['conditions'])) {
-			$query['conditions'] = array($query['conditions']);
-		}
 
-		$_Model =& $Model->{$association['alias']};
-		if ($association['type'] === 'hasAndBelongsToMany') {
-			$Link =& $Model->{$association['association']['with']};
+		if ($type === 'hasAndBelongsToMany') {
+			$Link =& $Model->{$association['settings']['with']};
 
-			$foreignKey = $Link->escapeField($association['association']['foreignKey']);
+			$foreignKey = $Link->escapeField($association['settings']['foreignKey']);
 			$associationKey = $_Model->escapeField();
-			$associationForeignKey = $Link->escapeField($association['association']['associationForeignKey']);
-
+			$associationForeignKey = $Link->escapeField($association['settings']['associationForeignKey']);
+			
 			$query['conditions'][] = array($foreignKey => $Model->id);
 			$query['joins'][] = array(
 				'alias' => $Link->alias,
@@ -103,43 +144,43 @@ class LazyLoaderBehavior extends ModelBehavior {
 				'type' => 'LEFT',
 				'conditions' => "{$associationForeignKey} = {$associationKey}"
 			);
-		} elseif ($association['type'] === 'hasOne' || $association['type'] === 'hasMany') {
-			$foreignKey = $_Model->escapeField($association['association']['foreignKey']);
+		} elseif ($type === 'hasMany' || $type === 'hasOne') {
+			$foreignKey = $_Model->escapeField($association['settings']['foreignKey']);
 			$query['conditions'][] = array($foreignKey => $Model->id);
-		} else {
-			$query['conditions'][] = array($_Model->escapeField() => $Model->field($association['association']['foreignKey']));
-		}
-
-		if (!$multiple && $instance) {
-			$_Model->set($_Model->find($type, $query));
-			return $_Model;
-		} else {
-			$return = $_Model->find($type, $query);
-			return $return;
-		}
-	}
-
-	protected function _getAssociation(&$Model, $association) {
-		if (preg_match('/^get/', $association)) {
-			$association = substr($association, 3);
-		}
-		$associateds = $Model->getAssociated();
-		if (!empty($associateds)) {
-			$associated = str_replace('_', '', $association);
-			$alias = Inflector::classify($association);
-
-			foreach ($associateds as $alias => $type) {
-				$lowercased = strtolower($alias);
-				$valid = (
-					(($type === 'belongsTo' || $type === 'hasOne') && $lowercased === $associated) ||
-					(Inflector::pluralize($lowercased) === $associated)
-				);
-				if ($valid) {
-					$association = $Model->{$type}[$alias];
-					return compact('alias', 'type', 'association');
+		} elseif ($type === 'belongsTo') {
+			if ($association['deep'] === false) {
+				if (!$_Model->Behaviors->enabled('Linkable.Linkable')) {
+					$_Model->Behaviors->attach('Linkable.Linkable');
+				}				
+				$path = array();
+				$current =& $path;
+				foreach (array_reverse($association['path']) as $link) {
+					$current[$link] = array();
+					$current =& $current[$link];
 				}
+				$query['link'] = $path;
+			} else {
+				$foreignKey = $Model->escapeField($association['settings']['foreignKey']);
+				$associationKey = $_Model->escapeField();
+				$query['joins'][] = array(
+					'alias' => $Model->alias,
+					'table' => $Model->getDataSource()->fullTableName($Model),
+					'type' => 'LEFT',
+					'conditions' => "{$associationKey} = {$foreignKey}"
+				);
 			}
+			$query['conditions'][] = array($Model->escapeField() => $Model->id);			
 		}
-		return false;
+		
+		$data = $_Model->find($method, $query);
+		if (!$instance) {
+			return $data;
+		} elseif (empty($data)) {
+			throw new Exception('Model couldn\'t be instantiated');
+			return false;
+		} else {
+			$_Model->set($data);
+			return $_Model;
+		}  
 	}
 }

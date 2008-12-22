@@ -10,35 +10,60 @@
  *
  */
 
-App::import('Behavior', 'LazyLoading.LazyLoader');
+App::import('Behavior', 'LazyLoader');
 App::import('Model', 'App');
 include CAKE_TESTS . 'cases' . DS . 'libs' . DS . 'model' . DS . 'models.php';
+
+class LazyLoadingTestPost extends CakeTestModel {
+	var $useTable = 'posts';
+	var $belongsTo = array('Author' => array('className' => 'LazyLoadingTestAuthor'));
+}
+class LazyLoadingTestAuthor extends CakeTestModel {
+	var $useTable = 'authors';
+	var $belongsTo = array('Team' => array('className' => 'LazyLoadingTestTeam'));
+}
+class LazyLoadingTestTeam extends CakeTestModel {
+	var $useTable = 'teams';
+	var $belongsTo = array('Industry' => array('className' => 'LazyLoadingTestIndustry'));
+}
+class LazyLoadingTestIndustry extends CakeTestModel {
+	var $useTable = 'industries';
+}
+class LazyLoadingTestComment extends CakeTestModel {
+	var $useTable = 'comments';
+	var $belongsTo = array('Author' => array('className' => 'LazyLoadingTestAuthor'));
+}
+
 
 class LazyLoaderBehaviorTest extends CakeTestCase {
 
 	var $fixtures = array(
 		'core.portfolio', 'core.item', 'core.items_portfolio',
 		'core.syfile', 'core.image', 'core.message',
-		'core.thread', 'core.bid', 'core.project'
+		'core.thread', 'core.bid', 'core.project',
+		'plugin.lazy_loading.post', 'plugin.lazy_loading.author', 'plugin.lazy_loading.team',
+		'plugin.lazy_loading.industry', 'plugin.lazy_loading.comment'
 	);
 
 	function start() {
 		parent::start();
+		
 		$this->Portfolio = ClassRegistry::init('Portfolio');
 		$this->Item = ClassRegistry::init('Item');
 		$this->Syfile = ClassRegistry::init('Syfile');
 		$this->Image = ClassRegistry::init('Image');
 		$this->Message = ClassRegistry::init('Message');
 		$this->Thread = ClassRegistry::init('Thread');
-
-		$this->Portfolio->Behaviors->attach('LazyLoading.LazyLoader');
-		$this->Item->Behaviors->attach('LazyLoading.LazyLoader');
-		$this->Syfile->Behaviors->attach('LazyLoading.LazyLoader');
-		$this->Image->Behaviors->attach('LazyLoading.LazyLoader');
-		$this->Message->Behaviors->attach('LazyLoading.LazyLoader');
-		$this->Thread->Behaviors->attach('LazyLoading.LazyLoader');
+		$this->Post = ClassRegistry::init('LazyLoadingTestPost');
 
 		$this->Image->bind('Syfile', array('hasOne'));
+	
+		foreach (ClassRegistry::keys() as $alias) {
+			$Obj =& ClassRegistry::getObject($alias);
+			if (is_a($Obj, 'Model')) {
+				$Obj->Behaviors->attach('LazyLoading.LazyLoader');
+			}
+		}
 	}
 
 	function testBelongsTo() {
@@ -178,5 +203,15 @@ class LazyLoaderBehaviorTest extends CakeTestCase {
 
 		$this->expectError();
 		$this->Syfile->someMethodThatWillNeverBeHandledAsItIsNotOnlyNotImplementedInTheModelAsItIsNotImplementedInAnyOfItsBehaviors();
+	}
+	
+	function testValidDeepRelation() {
+		$this->Post->id = 1;
+		$this->assertNotNull($this->Post->getTeam());
+		$this->assertEqual($this->Post->getTeam('instance')->alias, 'Team');
+		$this->assertIdentical($this->Post->getTeam('instance'), $this->Post->getAuthor('instance')->getTeam('instance'));
+		$this->assertNotNull($this->Post->getIndustry());
+		$this->assertEqual($this->Post->getIndustry('instance')->alias, 'Industry');
+		$this->assertIdentical($this->Post->getIndustry('instance'), $this->Post->getTeam('instance')->getIndustry('instance'));
 	}
 }
